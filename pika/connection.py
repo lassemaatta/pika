@@ -576,6 +576,23 @@ class Connection(object):
         :param method on_close_callback: Called when the connection is closed
 
         """
+        self.connection_state = None
+        self.outbound_buffer = None
+        self._channels = None
+        self._frame_buffer = None
+        self._body_max_length = None
+        self._backpressure = None
+        self.heartbeat = None
+        self.remaining_connection_attempts = None
+        self.closing = None
+        self.bytes_sent = None
+        self.bytes_received = None
+        self.frames_sent = None
+        self.frames_received = None
+        self.server_properties = None
+        self.server_capabilities = None
+        self.known_hosts = None
+
         # Define our callback dictionary
         self.callbacks = callback.CallbackManager()
 
@@ -583,8 +600,6 @@ class Connection(object):
         self.callbacks.add(0, self.ON_CONNECTION_ERROR,
                            on_open_error_callback or self._on_connection_error,
                            False)
-
-        self.heartbeat = None
 
         # On connection callback
         if on_open_callback:
