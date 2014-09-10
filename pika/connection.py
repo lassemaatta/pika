@@ -584,6 +584,8 @@ class Connection(object):
                            on_open_error_callback or self._on_connection_error,
                            False)
 
+        self.heartbeat = None
+
         # On connection callback
         if on_open_callback:
             self.add_on_open_callback(on_open_callback)
@@ -959,6 +961,14 @@ class Connection(object):
                          self.params.heartbeat)
             return heartbeat.HeartbeatChecker(self, self.params.heartbeat)
 
+    def _remove_heartbeat(self):
+        """Stop the heartbeat checker if it exists
+
+        """
+        if self.heartbeat:
+            self.heartbeat.stop()
+            self.heartbeat = None
+
     def _deliver_frame_to_channel(self, value):
         """Deliver the frame to the channel specified in the frame.
 
@@ -1185,9 +1195,7 @@ class Connection(object):
             self.closing = (method_frame.method.reply_code,
                             method_frame.method.reply_text)
 
-        # Stop the heartbeat checker if it exists
-        if self.heartbeat:
-            self.heartbeat.stop()
+        self._remove_heartbeat()
 
         # If this did not come from the connection adapter, close the socket
         if not from_adapter:
@@ -1297,6 +1305,7 @@ class Connection(object):
                        self.params.host, self.params.port,
                        reply_code, reply_text)
         self._set_connection_state(self.CONNECTION_CLOSED)
+        self._remove_heartbeat()
         for channel in self._channels.keys():
             if channel not in self._channels:
                 continue
