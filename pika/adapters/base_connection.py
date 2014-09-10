@@ -123,15 +123,16 @@ class BaseConnection(connection.Connection):
             error = self._create_and_connect_to_socket(sock_addr)
             if not error:
                 return None
+            else:
+                self._cleanup_socket()
+
         # Failed to connect
         return error
 
     def _adapter_disconnect(self):
         """Invoked if the connection is being told to disconnect"""
         self._remove_heartbeat()
-        if self.socket:
-            self.socket.close()
-        self.socket = None
+        self._cleanup_socket()
         self._check_state_on_disconnect()
         self._handle_ioloop_stop()
         self._init_connection_state()
@@ -372,6 +373,11 @@ class BaseConnection(connection.Connection):
         super(BaseConnection, self)._init_connection_state()
         self.base_events = self.READ | self.ERROR
         self.event_state = self.base_events
+        self._cleanup_socket()
+
+    def _cleanup_socket(self):
+        if self.socket:
+            self.socket.close()
         self.socket = None
 
     def _manage_event_state(self):
