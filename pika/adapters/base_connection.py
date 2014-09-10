@@ -61,7 +61,6 @@ class BaseConnection(connection.Connection):
             raise RuntimeError("SSL specified but it is not available")
         self.base_events = self.READ | self.ERROR
         self.event_state = self.base_events
-        self.fd = None
         self.ioloop = ioloop
         self.socket = None
         self.stop_ioloop_on_close = stop_ioloop_on_close
@@ -309,22 +308,22 @@ class BaseConnection(connection.Connection):
         :param bool write_only: Only handle write events
 
         """
-        if not fd:
+        if not self.socket:
             LOGGER.error('Received events on closed socket: %d', fd)
             return
 
-        if events & self.WRITE:
+        if self.socket and (events & self.WRITE):
             self._handle_write()
 
-        if not write_only and (events & self.READ):
+        if self.socket and not write_only and (events & self.READ):
             self._handle_read()
 
-        if write_only and (events & self.READ) and (events & self.ERROR):
+        if self.socket and write_only and (events & self.READ) and (events & self.ERROR):
             LOGGER.error('BAD libc:  Write-Only but Read+Error. '
                          'Assume socket disconnected.')
             self._handle_disconnect()
 
-        if events & self.ERROR:
+        if self.socket and (events & self.ERROR):
             LOGGER.error('Error event %r, %r', events, error)
             self._handle_error(error)
 
@@ -371,7 +370,6 @@ class BaseConnection(connection.Connection):
 
         """
         super(BaseConnection, self)._init_connection_state()
-        self.fd = None
         self.base_events = self.READ | self.ERROR
         self.event_state = self.base_events
         self.socket = None
