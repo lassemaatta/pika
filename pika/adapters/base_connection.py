@@ -135,7 +135,6 @@ class BaseConnection(connection.Connection):
         self._cleanup_socket()
         self._check_state_on_disconnect()
         self._handle_ioloop_stop()
-        self._init_connection_state()
 
     def _check_state_on_disconnect(self):
         """Checks to see if we were in opening a connection with RabbitMQ when

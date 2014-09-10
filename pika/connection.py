@@ -613,7 +613,6 @@ class Connection(object):
         self.params = parameters or ConnectionParameters()
 
         # Initialize the connection state and connect
-        self._init_connection_state()
         self.connect()
 
     def add_backpressure_callback(self, callback_method):
@@ -721,6 +720,8 @@ class Connection(object):
         Connection object should connect on its own.
 
         """
+        self._remove_connection_callbacks()
+        self._init_connection_state()
         self._set_connection_state(self.CONNECTION_INIT)
         error = self._adapter_connect()
         if not error:
@@ -1108,9 +1109,6 @@ class Connection(object):
         # When closing, hold reason why
         self.closing = 0, 'Not specified'
 
-        # Our starting point once connected, first frame received
-        self._add_connection_start_callback()
-
     def _is_basic_deliver_frame(self, frame_value):
         """Returns true if the frame is a Basic.Deliver
 
@@ -1195,6 +1193,9 @@ class Connection(object):
 
         # Start the communication with the RabbitMQ Broker
         self._send_frame(frame.ProtocolHeader())
+
+        # Our starting point once connected, first frame received
+        self._add_connection_start_callback()
 
     def _on_connection_closed(self, method_frame, from_adapter=False):
         """Called when the connection is closed remotely. The from_adapter value
@@ -1328,7 +1329,6 @@ class Connection(object):
                                                                     reply_text))
             self._channels[channel]._on_close(method_frame)
         self._process_connection_closed_callbacks(reply_code, reply_text)
-        self._remove_connection_callbacks()
 
     def _process_callbacks(self, frame_value):
         """Process the callbacks for the frame if the frame is a method frame
@@ -1432,8 +1432,11 @@ class Connection(object):
     def _remove_connection_callbacks(self):
         """Remove all callbacks for the connection"""
         self._remove_callbacks(0, [spec.Connection.Close,
+                                   spec.Connection.CloseOk,
                                    spec.Connection.Start,
-                                   spec.Connection.Open])
+                                   spec.Connection.Tune,
+                                   spec.Connection.Open,
+                                   spec.Connection.OpenOk])
 
     def _rpc(self, channel_number, method_frame,
              callback_method=None, acceptable_replies=None):

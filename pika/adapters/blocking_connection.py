@@ -312,7 +312,6 @@ class BlockingConnection(base_connection.BaseConnection):
         """Called if the connection is being requested to disconnect."""
         self._cleanup_socket()
         self._check_state_on_disconnect()
-        self._init_connection_state()
 
     def _call_timeout_method(self, timeout_value):
         """Execute the method that was scheduled to be called.
