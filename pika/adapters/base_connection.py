@@ -9,6 +9,8 @@ import socket
 import ssl
 import select
 
+from backports.ssl_match_hostname import match_hostname, CertificateError
+
 from pika import connection
 from pika import exceptions
 
@@ -175,35 +177,48 @@ class BaseConnection(connection.Connection):
         else:
             ssl_text = ""
 
+        host = sock_addr_tuple[4][0]
+        port = sock_addr_tuple[4][1]
+
         LOGGER.info('Connecting to %s:%s%s',
-                    sock_addr_tuple[4][0], sock_addr_tuple[4][1], ssl_text)
+                    host, port, ssl_text)
 
         # Connect to the socket
         try:
-            self.socket.connect(sock_addr_tuple[4])
+            self.socket.connect((host, port))
 
             # Handle SSL Connection Negotiation
             if self.params.ssl:
+                self._check_ssl_certificate_hostname()
                 self._do_ssl_handshake()
 
         except ssl.SSLError as error:
             error = 'SSL connection to %s:%s failed: %s' % (
-                sock_addr_tuple[4][0], sock_addr_tuple[4][1], error)
+                host, port, error)
+            LOGGER.error(error)
+            return error
+        except CertificateError as error:
+            error = 'CertificateError while connecting to %s:%s: %s' % (
+                host, port, error)
             LOGGER.error(error)
             return error
         except socket.timeout:
             error = 'Connection to %s:%s failed: timeout' % (
-                sock_addr_tuple[4][0], sock_addr_tuple[4][1])
+                host, port)
             LOGGER.error(error)
             return error
         except socket.error as error:
             error = 'Connection to %s:%s failed: %s' % (
-                sock_addr_tuple[4][0], sock_addr_tuple[4][1], error)
+                host, port, error)
             LOGGER.warning(error)
             return error
 
         # Made it this far
         return None
+
+    def _check_ssl_certificate_hostname(self):
+        LOGGER.info('SSL peer certificate %s', self.socket.getpeercert())
+        match_hostname(self.socket.getpeercert(), self.params.host)
 
     def _do_ssl_handshake(self):
         """Perform SSL handshaking, copied from python stdlib test_ssl.py.
