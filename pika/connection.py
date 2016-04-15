@@ -576,6 +576,23 @@ class Connection(object):
         :param method on_close_callback: Called when the connection is closed
 
         """
+        self.connection_state = None
+        self.outbound_buffer = None
+        self._channels = None
+        self._frame_buffer = None
+        self._body_max_length = None
+        self._backpressure = None
+        self.heartbeat = None
+        self.remaining_connection_attempts = None
+        self.closing = None
+        self.bytes_sent = None
+        self.bytes_received = None
+        self.frames_sent = None
+        self.frames_received = None
+        self.server_properties = None
+        self.server_capabilities = None
+        self.known_hosts = None
+
         # Define our callback dictionary
         self.callbacks = callback.CallbackManager()
 
@@ -596,7 +613,6 @@ class Connection(object):
         self.params = parameters or ConnectionParameters()
 
         # Initialize the connection state and connect
-        self._init_connection_state()
         self.connect()
 
     def add_backpressure_callback(self, callback_method):
@@ -683,11 +699,10 @@ class Connection(object):
         :param str reply_text: The text reason for the close
 
         """
-        if self.is_closing or self.is_closed:
+        if not self.is_open:
             return
 
-        if self._has_open_channels:
-            self._close_channels(reply_code, reply_text)
+        self._close_channels(reply_code, reply_text)
 
         # Set our connection state
         self._set_connection_state(self.CONNECTION_CLOSING)
@@ -704,6 +719,8 @@ class Connection(object):
         Connection object should connect on its own.
 
         """
+        self._remove_connection_callbacks()
+        self._init_connection_state()
         self._set_connection_state(self.CONNECTION_INIT)
         error = self._adapter_connect()
         if not error:
@@ -959,6 +976,14 @@ class Connection(object):
                          self.params.heartbeat)
             return heartbeat.HeartbeatChecker(self, self.params.heartbeat)
 
+    def _remove_heartbeat(self):
+        """Stop the heartbeat checker if it exists
+
+        """
+        if self.heartbeat:
+            self.heartbeat.stop()
+            self.heartbeat = None
+
     def _deliver_frame_to_channel(self, value):
         """Deliver the frame to the channel specified in the frame.
 
@@ -987,11 +1012,6 @@ class Connection(object):
             LOGGER.warning(BACKPRESSURE_WARNING, buffer_size,
                            int(buffer_size / avg_frame_size))
             self.callbacks.process(0, self.ON_CONNECTION_BACKPRESSURE, self)
-
-    def _ensure_closed(self):
-        """If the connection is not closed, close it."""
-        if self.is_open:
-            self.close()
 
     def _flush_outbound(self):
         """Adapters should override to flush the contents of outbound_buffer
@@ -1083,9 +1103,6 @@ class Connection(object):
         # When closing, hold reason why
         self.closing = 0, 'Not specified'
 
-        # Our starting point once connected, first frame received
-        self._add_connection_start_callback()
-
     def _is_basic_deliver_frame(self, frame_value):
         """Returns true if the frame is a Basic.Deliver
 
@@ -1171,6 +1188,9 @@ class Connection(object):
         # Start the communication with the RabbitMQ Broker
         self._send_frame(frame.ProtocolHeader())
 
+        # Our starting point once connected, first frame received
+        self._add_connection_start_callback()
+
     def _on_connection_closed(self, method_frame, from_adapter=False):
         """Called when the connection is closed remotely. The from_adapter value
         will be true if the connection adapter has been disconnected from
@@ -1185,9 +1205,7 @@ class Connection(object):
             self.closing = (method_frame.method.reply_code,
                             method_frame.method.reply_text)
 
-        # Stop the heartbeat checker if it exists
-        if self.heartbeat:
-            self.heartbeat.stop()
+        self._remove_heartbeat()
 
         # If this did not come from the connection adapter, close the socket
         if not from_adapter:
@@ -1297,14 +1315,13 @@ class Connection(object):
                        self.params.host, self.params.port,
                        reply_code, reply_text)
         self._set_connection_state(self.CONNECTION_CLOSED)
-        for channel in self._channels.keys():
-            if channel not in self._channels:
-                continue
-            method_frame = frame.Method(channel, spec.Channel.Close(reply_code,
-                                                                    reply_text))
-            self._channels[channel]._on_close(method_frame)
+        self._remove_heartbeat()
+
+        for ch in self._channels.keys():
+            method_frame = frame.Method(ch, spec.Channel.Close(reply_code,
+                                                               reply_text))
+            self._channels[ch]._on_close(method_frame)
         self._process_connection_closed_callbacks(reply_code, reply_text)
-        self._remove_connection_callbacks()
 
     def _process_callbacks(self, frame_value):
         """Process the callbacks for the frame if the frame is a method frame
@@ -1408,8 +1425,11 @@ class Connection(object):
     def _remove_connection_callbacks(self):
         """Remove all callbacks for the connection"""
         self._remove_callbacks(0, [spec.Connection.Close,
+                                   spec.Connection.CloseOk,
                                    spec.Connection.Start,
-                                   spec.Connection.Open])
+                                   spec.Connection.Tune,
+                                   spec.Connection.Open,
+                                   spec.Connection.OpenOk])
 
     def _rpc(self, channel_number, method_frame,
              callback_method=None, acceptable_replies=None):

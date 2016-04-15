@@ -80,6 +80,9 @@ class HeartbeatChecker(object):
         been idle too long.
 
         """
+        if not self.active:
+            return
+
         LOGGER.debug('Received %i heartbeat frames, sent %i',
                      self._heartbeat_frames_received,
                      self._heartbeat_frames_sent)
@@ -116,6 +119,7 @@ class HeartbeatChecker(object):
         duration = self._max_idle_count * self._interval
         text = HeartbeatChecker._STALE_CONNECTION % duration
         self._connection.close(HeartbeatChecker._CONNECTION_FORCED, text)
+        self._connection._adapter_disconnect()
         self._connection._on_disconnect(HeartbeatChecker._CONNECTION_FORCED,
                                         text)
 
